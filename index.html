@@ -7,63 +7,69 @@
 <style>
   :root{--fg:#fff;--muted:#a3a3a3;--accent:#b388ff}
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;background:#000;color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+  html,body{height:100%;margin:0;background:#000;color:var(--fg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
   .center{min-height:100%;display:grid;place-items:center;text-align:center;padding:24px}
-  .btn{appearance:none;border:0;border-radius:14px;padding:16px 26px;font-weight:800;
-       font-size:clamp(16px,4.5vw,22px);color:#1a1a1a;background:var(--accent);cursor:pointer;
-       box-shadow:0 10px 30px rgba(179,136,255,.35), inset 0 1px 0 rgba(255,255,255,.4);
-       transition:transform .08s ease, filter .2s ease}
-  .btn:hover{filter:brightness(1.05)} .btn:active{transform:translateY(2px) scale(.99)}
+  .btn{
+    appearance:none;border:0;border-radius:14px;padding:16px 26px;font-weight:800;
+    font-size:clamp(16px,4.5vw,22px);color:#1a1a1a;background:var(--accent);cursor:pointer;
+    box-shadow:0 10px 30px rgba(179,136,255,.35), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .08s ease, filter .2s ease
+  }
+  .btn:hover{filter:brightness(1.05)}
+  .btn:active{transform:translateY(2px) scale(.99)}
   canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh}
 </style>
 </head>
 <body>
-<div id="gate" class="center">
-  <main>
-    <button id="startBtn" class="btn">Você confia em mim?</button>
-  </main>
-</div>
+  <div id="gate" class="center">
+    <main>
+      <button id="startBtn" class="btn">Você confia em mim?</button>
+    </main>
+  </div>
+
 <script>
 /* ===================== CONFIG ===================== */
-const AUDIO_URL = "Conga.MP3"; // MP3 local
-const BACKGROUND_MODE = "flash";
+const AUDIO_URL = "Conga.MP3";   // deixe o arquivo .mp3 na mesma pasta
+const BACKGROUND_MODE = "flash"; // "flash" | "none"
 /* ================================================== */
 
-// util
+// Utilidades
 const Random = {
   float(min,max){ return Math.random()*(max-min)+min; },
   int(min,max){ return Math.floor(Math.random()*(max-min+1))+min; },
   color(){ return '#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'); }
 };
 
-// sprite simples
+// Sprite simples (spritesheet horizontal)
 class Sprite{
   constructor(img,frames){ this.img=img; this.frames=frames; }
   static Horizontal(width,height,count){
-    const frames=[]; for(let i=0;i<count;i++) frames.push({x:i*width,y:0,w:width,h:height});
-    return frames;
+    const f=[]; for(let i=0;i<count;i++) f.push({x:i*width,y:0,w:width,h:height});
+    return f;
   }
   draw(ctx,frame,dx,dy,w,h){
-    const f=this.frames[frame]; ctx.drawImage(this.img,f.x,f.y,f.w,f.h,dx|0,dy|0,w||f.w,h||f.h);
+    const fr=this.frames[frame];
+    ctx.drawImage(this.img,fr.x,fr.y,fr.w,fr.h,dx|0,dy|0,w||fr.w,h||fr.h);
   }
 }
 
-// cena canvas
+// Cena principal em canvas
 class Scene{
   constructor(){
     this.c=document.createElement('canvas');
     this.ctx=this.c.getContext('2d');
-    this.entities=[]; this.elapsed=0; this.last=performance.now(); this.protagonist=null;
-    this.bg="#000"; this.panel="#000";
-    this.resize(); window.addEventListener('resize',()=>this.resize());
+    this.entities=[]; this.elapsed=0; this.last=performance.now();
+    this.protagonist=null; this.bg="#000";
+    this.resize(); addEventListener('resize',()=>this.resize());
     this.ctx.imageSmoothingEnabled=false;
   }
   mount(){ document.body.appendChild(this.c); }
   resize(){
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
-    this.c.width = Math.floor(innerWidth*dpr);
-    this.c.height= Math.floor(innerHeight*dpr);
-    this.c.style.width = innerWidth+"px"; this.c.style.height = innerHeight+"px";
+    const dpr=Math.max(1,Math.min(devicePixelRatio||1,2));
+    this.c.width=Math.floor(innerWidth*dpr);
+    this.c.height=Math.floor(innerHeight*dpr);
+    this.c.style.width=innerWidth+"px"; this.c.style.height=innerHeight+"px";
     this.ctx.setTransform(dpr,0,0,dpr,0,0);
   }
   loop=()=>{
@@ -71,79 +77,156 @@ class Scene{
     this.update(dt); this.render(); requestAnimationFrame(this.loop);
   }
   start(){ this.last=performance.now(); this.loop(); }
+
   update(dt){
     this.elapsed+=dt;
     if(this.elapsed>=.4){
       this.elapsed=0;
-      if(BACKGROUND_MODE==='flash'){ this.bg=Random.color(); this.panel=Random.color(); }
-      this.entities.push(this.makeEntity());
+      if(BACKGROUND_MODE==='flash'){ this.bg=Random.color(); }
+      this.entities.push(this.makeRunner());
     }
-    if(!this.protagonist){ const p=this.makeEntity(true); p.speed.x=0; p.opacity=1; this.entities.push(p); this.protagonist=p; }
+
+    // Garante um protagonista
+    if(!this.protagonist){
+      this.protagonist=this.makeProtagonistIntro();
+      this.entities.push(this.protagonist);
+    }
+
+    // Ajusta target do centro + tamanho responsivo
     if(this.protagonist){
       const cw=this.c.clientWidth,ch=this.c.clientHeight, sz=this.protagonist.intrinsic;
-      const maxW=Math.min(cw*.8, 600), maxH=Math.min(ch*.8, 600);
-      const scale=Math.min(maxW/sz.w, maxH/sz.h);
+      const maxW=Math.min(cw*.8,600), maxH=Math.min(ch*.8,600);
+      const scale=Math.min(maxW/sz.w,maxH/sz.h);
       const tw=sz.w*scale, th=sz.h*scale;
       this.protagonist.size={w:tw,h:th};
-      this.protagonist.pos.x=(cw-tw)/2; this.protagonist.pos.y=(ch-th)/2;
+      this.protagonist.centerTarget={x:(cw-tw)/2, y:(ch-th)/2};
     }
+
+    // Atualiza todas as entidades
     const off=[];
     for(let i=0;i<this.entities.length;i++){
-      const e=this.entities[i]; e.t+=dt;
-      if(e.t>=e.frameDur){ e.t=0; e.frame=(e.frame+1) % e.sprite.frames.length; }
-      e.pos.x += e.speed.x*dt;
-      const cw=this.c.clientWidth; if(e.speed.x!==0 && (e.pos.x>cw || e.pos.x<=-e.size.w)) off.push(i);
+      const e=this.entities[i];
+      e.t+=dt;
+      if(e.t>=e.frameDur){ e.t=0; e.frame=(e.frame+1)%e.sprite.frames.length; }
+
+      if(e.kind==='runner'){
+        e.pos.x+=e.speed.x*dt;
+        const cw=this.c.clientWidth;
+        if(e.pos.x>cw || e.pos.x<=-e.size.w) off.push(i);
+      }
+
+      if(e.kind==='protag'){
+        if(e.state==='intro'){
+          // tween 1.2s com easing e fade/zoom
+          e.time+=dt;
+          const dur=1.2, t=Math.min(1,e.time/dur);
+          // easing suave que acelera e desacelera (aproximação)
+          const ease = t => 1 - Math.pow(1 - t, 2);
+          const k=ease(t);
+
+          e.pos.x = e.start.x + (e.centerTarget.x - e.start.x)*k;
+          e.pos.y = e.start.y + (e.centerTarget.y - e.start.y)*k;
+          e.opacity = 0.2 + 0.8*k;
+          e.scale = 0.92 + 0.08*k;
+
+          // rastro (clones translúcidos)
+          e.trailTimer-=dt;
+          if(e.trailTimer<=0){
+            e.trailTimer=0.045;
+            this.entities.push(this.makeGhost(e));
+          }
+
+          if(t>=1){ e.state='idle'; e.opacity=1; e.scale=1; }
+        }else{ // idle: “respiração”
+          e.breathe+=dt;
+          e.scale = 1 + Math.sin(e.breathe*2.4)*0.01;
+        }
+      }
+
+      if(e.kind==='ghost'){
+        e.opacity-=dt*1.5;
+        if(e.opacity<=0) off.push(i);
+      }
     }
     for(let i=off.length-1;i>=0;i--) this.entities.splice(off[i],1);
   }
+
   render(){
     const {ctx}=this, cw=this.c.clientWidth, ch=this.c.clientHeight;
     ctx.globalAlpha=1; ctx.fillStyle=this.bg; ctx.fillRect(0,0,cw,ch);
+
     for(const e of this.entities){
+      ctx.save();
       ctx.globalAlpha=e.opacity;
-      e.sprite.draw(ctx,e.frame,e.pos.x,e.pos.y,e.size.w,e.size.h);
+      // desenha com escala a partir do centro do sprite
+      ctx.translate(e.pos.x+e.size.w/2, e.pos.y+e.size.h/2);
+      ctx.scale(e.scale||1, e.scale||1);
+      ctx.translate(-e.size.w/2, -e.size.h/2);
+      e.sprite.draw(ctx,e.frame,0,0,e.size.w,e.size.h);
+      ctx.restore();
     }
   }
-  makeEntity(protag=false){
-    const sp = SPRITES.ditto; const f0 = sp.frames[0];
-    const dir = Random.int(0,1); const scale = protag? Random.int(12,18) : Random.int(4,16);
-    const opac = protag? 1 : Random.float(.15,1);
-    const speedX = protag? 0 : Random.int(400,1000)*(dir?1:-1);
+
+  // Criadores de entidades
+  makeRunner(){
+    const sp=SPRITES.ditto, f0=sp.frames[0];
+    const dir=Random.int(0,1), scale=Random.int(4,16);
     const cw=this.c.clientWidth, ch=this.c.clientHeight;
-    const intrinsic={w:f0.w,h:f0.h}, size={w:intrinsic.w*scale, h:intrinsic.h*scale};
-    const origin={x: dir? -size.w : cw, y: Random.int(0, Math.max(0,ch-size.h))};
-    return {sprite:sp, frameDur:.085, frame:0, t:0, speed:{x:speedX,y:0}, size, pos:origin, opacity:opac, intrinsic};
+    const size={w:f0.w*scale,h:f0.h*scale};
+    const origin={x: dir? -size.w : cw, y: Random.int(0,Math.max(0,ch-size.h))};
+    return {
+      kind:'runner', sprite:sp, frameDur:.085, frame:0, t:0,
+      speed:{x:Random.int(400,1000)*(dir?1:-1), y:0}, size, pos:origin,
+      opacity:Random.float(.15,1), intrinsic:{w:f0.w,h:f0.h}, scale:1
+    };
+  }
+
+  makeProtagonistIntro(){
+    const sp=SPRITES.ditto, f0=sp.frames[0];
+    const cw=this.c.clientWidth, ch=this.c.clientHeight;
+    const intrinsic={w:f0.w,h:f0.h};
+    // Começa fora da tela (direita). Troque start para vir da esquerda/baixo se quiser.
+    const size={w:intrinsic.w*14, h:intrinsic.h*14};
+    const start={x:cw+size.w*0.2, y:ch*0.62};
+    return {
+      kind:'protag', sprite:sp, frameDur:.085, frame:0, t:0,
+      size, pos:{...start}, start, intrinsic,
+      centerTarget:{x:0,y:0}, time:0, state:'intro',
+      opacity:0, scale:.9, breathe:0, trailTimer:0
+    };
+  }
+
+  makeGhost(e){
+    return {
+      kind:'ghost', sprite:e.sprite, frame:e.frame, frameDur:999, t:0,
+      size:{...e.size}, pos:{...e.pos}, opacity:.45, intrinsic:e.intrinsic, scale:e.scale
+    };
   }
 }
 
-// carrega sprite
-const SPRITES = {};
-(function loadSprite(){
+// Carrega o spritesheet do ditto (4 frames 33x29)
+const SPRITES={};
+(function(){
   const img=new Image();
-  img.onload=()=>{ SPRITES.ditto = new Sprite(img, Sprite.Horizontal(33,29,4)); }
+  img.onload=()=>{ SPRITES.ditto=new Sprite(img, Sprite.Horizontal(33,29,4)); };
   img.src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIQAAAAdAgMAAAAWQyy/AAAADFBMVEX///+4YOA4ODj4+PhASPNeAAAAAXRSTlMAQObYZgAAAStJREFUeF6l08FqhEAMBuBhbk6fYyj6Pgmul3pZEN9hWV8i9FgvC3X6PELpe2zP9Y/pyCLLFprLoP83STzo/lv+/ZEoGGwMw10RacmePmML4PfOjyqev6WGKDs/Kth40QiEXInxLPzxle+WHUS8kgoi6vU8zzaobIQB31R4QrU4T9RVKl5ngpheaBP1KlmWLlU4z0iCJioORKxCmzm5nDSJAOx0jxthdEBwzOLIkJyFIEGgQpvVqxSMhVRxQKCiEYhozQtbPV/Fmx6iJE5ErYkWgi8mlOYkEiVZxQRpglUojSZB9wJUTDoxkTeMN4J3ot0JT79CTMifRUmUEtV5803EJcD3+5ScS+MmML+feHBhCcKSWOVvw9s07H+LTdwvL/1Fp9yvaggJUx/WD0e0wREEScedAAAAAElFTkSuQmCC";
 })();
 
-// gate → inicia áudio + cena
-const btn = document.getElementById('startBtn');
-const gate = document.getElementById('gate');
-
+// Portal de início: cria a cena e toca o áudio
+const gate=document.getElementById('gate');
+const btn=document.getElementById('startBtn');
 let started=false;
+
 btn.addEventListener('click', ()=>{
   if(started || !SPRITES.ditto) return;
-  started = true;
+  started=true;
 
-  // inicia cena
-  const scene = new Scene();
-  scene.mount();
-  scene.start();
+  const scene=new Scene(); scene.mount(); scene.start();
   gate.remove();
 
-  // toca áudio
-  const audio = new Audio(AUDIO_URL);
-  audio.loop = true;
-  audio.volume = 1.0;
-  audio.play().catch(e => console.warn("Autoplay bloqueado:", e));
+  const audio=new Audio(AUDIO_URL);
+  audio.loop=true; audio.volume=1.0;
+  audio.play().catch(()=>{}); // iOS pode bloquear, mas o clique ajuda
 });
 </script>
 </body>
